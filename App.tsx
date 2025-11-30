@@ -188,34 +188,55 @@ const App: React.FC = () => {
   };
 
   const handlePlaylistTrackSelect = async (track: Track) => {
-    // YouTube videos - play via audio extraction from Invidious
+    // YouTube videos - play via audio extraction
     if (track.id.startsWith('youtube-')) {
       const videoId = track.url.match(/v=([^&]+)/)?.[1];
+      console.log('[Play] YouTube track selected:', videoId);
+      
       if (videoId) {
         setCurrentTrack(track);
         setShowPlaylist(true); // Auto-show playlist
         
         if (audioRef.current) {
           try {
-            // Get audio stream URL from Invidious
+            // Get audio stream URL
+            console.log('[Play] Requesting audio URL...');
             const audioUrl = await youtubeService.getPlayableAudioUrl(videoId);
             
-            if (audioUrl && !audioUrl.includes('youtube.com')) {
-              // We got a direct audio stream URL
+            console.log('[Play] Got audio URL:', audioUrl?.substring(0, 80));
+            
+            // Check if we got a direct audio stream (not YouTube URL)
+            const isDirectStream = audioUrl && 
+                                   !audioUrl.includes('youtube.com') && 
+                                   !audioUrl.includes('youtu.be') &&
+                                   audioUrl.length > 100;
+            
+            if (isDirectStream) {
+              console.log('[Play] ✓ Direct audio stream detected, playing...');
+              // Direct audio stream
               audioRef.current.src = audioUrl;
               audioRef.current.crossOrigin = 'anonymous';
               audioRef.current.load();
-              await audioRef.current.play().catch(e => {
-                console.error('Playback error:', e);
-              });
+              
+              // Wait for canplay event before playing
+              const playPromise = audioRef.current.play();
+              if (playPromise !== undefined) {
+                await playPromise.catch(e => {
+                  console.error('[Play] Playback error:', e);
+                  console.log('[Play] Falling back to YouTube...');
+                  window.open(track.url, '_blank');
+                });
+              }
               setIsPlaying(true);
             } else {
-              // Fallback: Open in YouTube
-              console.warn('Could not extract audio stream, opening YouTube');
+              // Failed to extract - fallback to YouTube
+              console.warn('[Play] Could not extract audio stream, opening YouTube');
+              setIsPlaying(true);
               window.open(track.url, '_blank');
             }
           } catch (e) {
-            console.error('Error playing YouTube audio:', e);
+            console.error('[Play] Error:', e);
+            setIsPlaying(true);
             window.open(track.url, '_blank');
           }
         }
