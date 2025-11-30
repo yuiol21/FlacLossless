@@ -98,16 +98,23 @@ class SpotifyService {
       }
 
       const data = await response.json();
-      return (data.playlists?.items || []).map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        description: item.description || '',
-        images: item.images || [],
-        tracks: { items: [], next: null }
-      }));
+      console.log('Spotify search results:', data);
+      
+      const playlists = (data.playlists?.items || [])
+        .filter((item: any) => item && item.id) // Filter out null items
+        .map((item: any) => ({
+          id: item.id,
+          name: item.name || 'Unknown Playlist',
+          description: item.description || '',
+          images: item.images || [],
+          tracks: { items: [], next: null }
+        }));
+      
+      console.log('Processed playlists:', playlists);
+      return playlists;
     } catch (e) {
       console.error('Failed to search Spotify:', e);
-      alert(`Error: ${e instanceof Error ? e.message : 'Search failed'}`);
+      alert(`Error searching Spotify: ${e instanceof Error ? e.message : 'Unknown error'}`);
       return [];
     }
   }
@@ -118,25 +125,47 @@ class SpotifyService {
       
       let allTracks: SpotifyTrack[] = [];
       let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
+      let attempts = 0;
+      const maxAttempts = 5;
 
-      while (url && allTracks.length < 200) {
-        const response = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+      while (url && attempts < maxAttempts) {
+        try {
+          const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch tracks: ${response.statusText}`);
+          if (!response.ok) {
+            console.error(`Failed to fetch tracks: ${response.status} ${response.statusText}`);
+            break;
+          }
+
+          const data = await response.json();
+          console.log('Got tracks page:', data.items?.length);
+          
+          // Safely process tracks
+          const tracks = (data.items || [])
+            .map((item: any) => {
+              try {
+                return item?.track || null;
+              } catch (e) {
+                console.error('Error processing track item:', e);
+                return null;
+              }
+            })
+            .filter((track: any) => track && track.id); // Only include valid tracks
+          
+          console.log('Valid tracks:', tracks.length);
+          allTracks = [...allTracks, ...tracks];
+          
+          url = data.next || '';
+          attempts++;
+        } catch (pageError) {
+          console.error('Error fetching page:', pageError);
+          break;
         }
-
-        const data = await response.json();
-        const tracks = (data.items || [])
-          .map((item: any) => item.track)
-          .filter((track: any) => track && track.id); // Only require id, not preview_url
-        
-        allTracks = [...allTracks, ...tracks];
-        url = data.next || '';
       }
 
+      console.log('Total tracks fetched:', allTracks.length);
       return allTracks;
     } catch (e) {
       console.error('Failed to fetch playlist tracks:', e);
