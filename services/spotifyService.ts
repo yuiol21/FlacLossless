@@ -1,10 +1,10 @@
 // Spotify Integration Service
 const SPOTIFY_CLIENT_ID = (import.meta as any).env.VITE_SPOTIFY_CLIENT_ID || '';
-// For local development, use localhost. Spotify will accept http://localhost for development
+// Redirect URI - auto-detects localhost vs production
 const SPOTIFY_REDIRECT_URI = typeof window !== 'undefined' 
   ? window.location.hostname === 'localhost' 
     ? `http://localhost:${window.location.port || 3001}`
-    : window.location.origin // Use full origin (with https) for production
+    : `${window.location.protocol}//${window.location.hostname}` // Production: https://sonicpulse-drab.vercel.app
   : 'http://localhost:3001';
 
 interface SpotifyTrack {
