@@ -18,6 +18,8 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | YouTubePlaylist | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<SpotifyTrack[] | YouTubeVideo[]>([]);
   const [selectedSongs, setSelectedSongs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Handle Spotify callback on mount
   useEffect(() => {
