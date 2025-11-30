@@ -51,6 +51,19 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
     }
   };
 
+  const handlePlayYouTubeSong = (video: any) => {
+    // Create a track and import it
+    const track: Track = {
+      id: `youtube-${video.videoId}`,
+      title: video.title || 'Unknown',
+      artist: video.channelTitle || 'Unknown',
+      url: video.url,
+      cover: video.thumbnail || ''
+    };
+    onTracksImport([track]);
+    onClose();
+  };
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     
@@ -310,9 +323,13 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
                         <div className="font-semibold text-white truncate text-sm">{video.title}</div>
                         <div className="text-gray-500 truncate text-xs">{video.channelTitle}</div>
                       </div>
-                      <Play size={16} className={`flex-none cursor-pointer hover:scale-110 transition-transform mt-1 ${
-                        isSelected ? 'text-red-400' : 'text-gray-400 hover:text-red-400'
-                      }`} />
+                      <button
+                        onClick={() => handlePlayYouTubeSong(video)}
+                        className="flex-none hover:scale-110 transition-transform mt-1"
+                        title="Play this song"
+                      >
+                        <Play size={16} className={isSelected ? 'text-red-400' : 'text-gray-400 hover:text-red-400'} />
+                      </button>
                     </div>
                   </div>
                 );
