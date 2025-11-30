@@ -188,24 +188,67 @@ const App: React.FC = () => {
   };
 
   const handlePlaylistTrackSelect = (track: Track) => {
-    // YouTube links should open in a new tab
+    // YouTube videos need to be converted to audio
     if (track.id.startsWith('youtube-')) {
-      if (track.url) {
-        window.open(track.url, '_blank');
+      const videoIdMatch = track.url.match(/v=([^&]+)/);
+      if (videoIdMatch) {
+        const videoId = videoIdMatch[1];
+        // Use conversion API to stream audio
+        const audioUrl = `https://www.youtube.com/watch?v=${videoId}`; // Will be handled by conversion service
+        
+        setCurrentTrack(track);
+        if (audioRef.current) {
+          // Try multiple audio conversion APIs
+          const conversionUrl = `https://api.loadng.net/api/v1/convert?url=${encodeURIComponent(track.url)}&format=mp3`;
+          
+          audioRef.current.src = conversionUrl;
+          audioRef.current.crossOrigin = 'anonymous';
+          
+          // Fallback if direct conversion fails
+          audioRef.current.onerror = () => {
+            console.warn('Direct conversion failed, opening in YouTube');
+            window.open(track.url, '_blank');
+          };
+          
+          audioRef.current.load();
+          audioRef.current.play().catch(e => {
+            console.error('Playback error:', e);
+            alert('⚠️ Could not convert YouTube video to audio.\n\nOpening in YouTube instead...');
+            window.open(track.url, '_blank');
+          });
+          setIsPlaying(true);
+        }
       }
       return;
     }
-    
-    // Check if it's a Spotify URL (not a preview)
-    if (track.id.startsWith('spotify-') && !track.url.includes('d.scdn.co')) {
-      // No preview URL available - open in Spotify
+
+    // Spotify preview URLs play in app
+    if (track.id.startsWith('spotify-') && !track.url.includes('open.spotify.com')) {
+      setCurrentTrack(track);
+      if (audioRef.current) {
+        audioRef.current.src = track.url;
+        audioRef.current.crossOrigin = 'anonymous';
+        audioRef.current.load();
+        audioRef.current.play().catch(e => {
+          console.error('Playback error:', e);
+          if (track.url) {
+            window.open(track.url, '_blank');
+          }
+        });
+        setIsPlaying(true);
+      }
+      return;
+    }
+
+    // Spotify songs without previews - open in Spotify
+    if (track.id.startsWith('spotify-') && track.url.includes('open.spotify.com')) {
       if (track.url) {
         window.open(track.url, '_blank');
       }
       return;
     }
 
-    // Local tracks and Spotify previews can be played directly
+    // Local tracks can be played directly
     if (!track.url) {
       alert('⚠️ No playable URL for this track');
       return;
@@ -213,18 +256,13 @@ const App: React.FC = () => {
     
     setCurrentTrack(track);
     if (audioRef.current) {
-        audioRef.current.src = track.url;
-        audioRef.current.crossOrigin = 'anonymous';
-        audioRef.current.load();
-        audioRef.current.play().catch(e => {
-          console.error('Playback error:', e);
-          // If preview fails, open in Spotify
-          if (track.id.startsWith('spotify-')) {
-            alert('Preview unavailable. Opening in Spotify...');
-            window.open(track.url, '_blank');
-          }
-        });
-        setIsPlaying(true);
+      audioRef.current.src = track.url;
+      audioRef.current.load();
+      audioRef.current.play().catch(e => {
+        console.error('Playback error:', e);
+        alert('Playback failed');
+      });
+      setIsPlaying(true);
     }
   };
 

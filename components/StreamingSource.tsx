@@ -41,13 +41,17 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
     
     setLoading(true);
     setError(null);
+    setSelectedPlaylist(null);
+    setPlaylistTracks([]);
+    
     try {
       if (activeTab === 'spotify' && spotifyAuth) {
         const playlists = await spotifyService.searchPlaylists(searchQuery);
         setSpotifyPlaylists(playlists);
       } else if (activeTab === 'youtube') {
-        const playlists = await youtubeService.searchPlaylists(searchQuery);
-        setYoutubePlaylists(playlists);
+        // Search for songs directly instead of playlists
+        const songs = await youtubeService.searchSongs(searchQuery);
+        setPlaylistTracks(songs);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
@@ -105,7 +109,7 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
             id: `youtube-${youtubeVideo.videoId}`,
             title: youtubeVideo.title || 'Unknown',
             artist: youtubeVideo.channelTitle || 'Unknown',
-            url: youtubeVideo.url,
+            url: youtubeVideo.url, // YouTube watch URL - will be converted to audio
             cover: youtubeVideo.thumbnail || ''
           };
         }
@@ -242,7 +246,7 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
           <div className="flex-none mb-4 flex gap-2">
             <input
               type="text"
-              placeholder="Search playlists..."
+              placeholder="Search songs (e.g. 'Imagine John Lennon')..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -257,61 +261,46 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
             </button>
           </div>
 
-          {/* Results */}
-          {selectedPlaylist ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <button
-                onClick={() => {
-                  setSelectedPlaylist(null);
-                  setPlaylistTracks([]);
-                }}
-                className="mb-2 text-xs text-red-400 hover:text-red-300"
-              >
-                ← Back to playlists
-              </button>
-              <div className="text-sm font-bold mb-2 text-white">
-                {(selectedPlaylist as YouTubePlaylist).title}
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
-                {playlistTracks.map((video: any) => (
-                  <div key={video.id} className="p-2 bg-white/5 rounded hover:bg-white/10 text-xs">
-                    <div className="font-semibold text-white truncate">{(video as YouTubeVideo).title}</div>
-                    <div className="text-gray-500 truncate">{(video as YouTubeVideo).channelTitle}</div>
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={handleImportPlaylist}
-                className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <Music size={14} /> Import Playlist
-              </button>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
-              {youtubePlaylists.map((playlist) => (
+          {/* Song Results */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+            {playlistTracks.length > 0 ? (
+              playlistTracks.map((video: any) => (
                 <div
-                  key={playlist.id}
-                  onClick={() => handlePlaylistSelect(playlist)}
+                  key={video.id}
+                  onClick={() => handlePlaylistSelect(video)}
                   className="p-3 bg-white/5 hover:bg-white/10 rounded cursor-pointer transition-colors group"
                 >
                   <div className="flex items-start gap-2">
-                    {playlist.thumbnail && (
+                    {video.thumbnail && (
                       <img
-                        src={playlist.thumbnail}
-                        alt={playlist.title}
+                        src={video.thumbnail}
+                        alt={video.title}
                         className="w-10 h-10 rounded object-cover flex-none"
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-white truncate text-sm">{playlist.title}</div>
-                      <div className="text-gray-500 text-xs">{playlist.description || 'YouTube Playlist'}</div>
+                      <div className="font-semibold text-white truncate text-sm">{video.title}</div>
+                      <div className="text-gray-500 truncate text-xs">{video.channelTitle}</div>
                     </div>
                     <Play size={16} className="flex-none text-red-400 opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
                   </div>
                 </div>
-              ))}
-            </div>
+              ))
+            ) : (
+              <div className="text-center text-gray-500 text-sm py-8">
+                🎵 Search for a song to get started
+              </div>
+            )}
+          </div>
+
+          {/* Import Button */}
+          {playlistTracks.length > 0 && (
+            <button
+              onClick={handleImportPlaylist}
+              className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <Music size={14} /> Import {playlistTracks.length} Song{playlistTracks.length !== 1 ? 's' : ''}
+            </button>
           )}
         </div>
       )}
