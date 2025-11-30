@@ -6,8 +6,10 @@ import { liveService } from './services/liveService'; // Import Live Service
 import Visualizer from './components/Visualizer';
 import Equalizer from './components/Equalizer';
 import PlayerControls from './components/PlayerControls';
+import Playlist from './components/Playlist';
+import StreamingSource from './components/StreamingSource';
 import { Track } from './types';
-import { X, Mic2, Disc, Sliders, Sparkles, Activity, Download, Zap, Key } from 'lucide-react';
+import { X, Mic2, Disc, Sliders, Sparkles, Activity, Download, Zap, Key, List, Music, Wifi } from 'lucide-react';
 
 const App: React.FC = () => {
   // State
@@ -20,6 +22,11 @@ const App: React.FC = () => {
     artist: 'Mixkit Demo',
     url: DEMO_TRACK_URL
   });
+  
+  // Playlist State
+  const [playlist, setPlaylist] = useState<Track[]>([]);
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  const [showStreamingSource, setShowStreamingSource] = useState(false);
   
   // Audio FX State
   const [eqGains, setEqGains] = useState<number[]>(PRESETS.flat.gains);
@@ -79,7 +86,14 @@ const App: React.FC = () => {
       
       const updateTime = () => setCurrentTime(audio.currentTime);
       const updateDuration = () => setDuration(audio.duration);
-      const onEnd = () => setIsPlaying(false);
+      const onEnd = () => {
+        setIsPlaying(false);
+        // Auto-play next track in playlist
+        const currentIndex = playlist.findIndex(t => t.id === currentTrack.id);
+        if (currentIndex !== -1 && currentIndex < playlist.length - 1) {
+          handlePlaylistTrackSelect(playlist[currentIndex + 1]);
+        }
+      };
 
       audio.addEventListener('timeupdate', updateTime);
       audio.addEventListener('loadedmetadata', updateDuration);
@@ -94,7 +108,7 @@ const App: React.FC = () => {
         audio.removeEventListener('ended', onEnd);
       };
     }
-  }, []);
+  }, [playlist, currentTrack.id]);
 
   // Update Audio Graph when State changes
   useEffect(() => {
@@ -148,18 +162,59 @@ const App: React.FC = () => {
 
   const handleFileChange = (file: File) => {
     const url = URL.createObjectURL(file);
-    setCurrentTrack({
-      id: file.name,
+    const newTrack: Track = {
+      id: file.name + Date.now(),
       title: file.name.replace(/\.[^/.]+$/, ""),
-      artist: 'Local Track', // Could use jsmediatags here in a real app
+      artist: 'Local Track',
       url: url
-    });
+    };
+    setCurrentTrack(newTrack);
     if (audioRef.current) {
         audioRef.current.src = url;
         audioRef.current.load();
         setIsPlaying(false);
         setPlaybackRate(1);
     }
+  };
+
+  const handleAddPlaylistTracks = (files: File[]) => {
+    const newTracks: Track[] = files.map(file => ({
+      id: file.name + Date.now() + Math.random(),
+      title: file.name.replace(/\.[^/.]+$/, ""),
+      artist: 'Local Track',
+      url: URL.createObjectURL(file)
+    }));
+    setPlaylist(prev => [...prev, ...newTracks]);
+  };
+
+  const handlePlaylistTrackSelect = (track: Track) => {
+    // YouTube links should open in a new tab instead of trying to play
+    if (track.id.startsWith('youtube-')) {
+      window.open(track.url, '_blank');
+      return;
+    }
+    
+    setCurrentTrack(track);
+    if (audioRef.current) {
+        audioRef.current.src = track.url;
+        audioRef.current.load();
+        setIsPlaying(true);
+    }
+  };
+
+  const handleRemovePlaylistTrack = (trackId: string) => {
+    setPlaylist(prev => prev.filter(t => t.id !== trackId));
+    if (currentTrack.id === trackId && playlist.length > 1) {
+      const nextTrack = playlist.find(t => t.id !== trackId);
+      if (nextTrack) handlePlaylistTrackSelect(nextTrack);
+    }
+  };
+
+  const handleReorderPlaylist = (fromIndex: number, toIndex: number) => {
+    const newPlaylist = [...playlist];
+    const [movedTrack] = newPlaylist.splice(fromIndex, 1);
+    newPlaylist.splice(toIndex, 0, movedTrack);
+    setPlaylist(newPlaylist);
   };
 
   const handleInstallClick = () => {
@@ -287,6 +342,20 @@ const App: React.FC = () => {
                         <Key size={10} /> CONNECT KEY
                      </button>
                  )}
+                 <button 
+                    onClick={() => setShowStreamingSource(true)}
+                    className="p-1 px-2 rounded-full border border-orange-500/30 text-[10px] bg-orange-900/20 text-orange-400 flex items-center gap-1 hover:bg-orange-900/40 transition-colors"
+                    title="Import from Spotify or YouTube"
+                 >
+                    <Wifi size={10} /> STREAM
+                 </button>
+                 <button 
+                    onClick={() => setShowPlaylist(!showPlaylist)}
+                    className={`p-1 px-2 rounded-full text-[10px] flex items-center gap-1 transition-colors border ${showPlaylist ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+                    title="Toggle Playlist"
+                 >
+                    <List size={10} /> PLAYLIST
+                 </button>
                  {installPrompt && (
                      <button onClick={handleInstallClick} className="p-1 px-2 rounded-full border border-cyan-500/30 text-[10px] bg-cyan-900/20 text-cyan-400 flex items-center gap-1 hover:bg-cyan-900/40 transition-colors">
                         <Download size={10} /> INSTALL APP
@@ -330,30 +399,46 @@ const App: React.FC = () => {
            </div>
         </div>
 
-        {/* Right: Controls & EQ */}
-        <div className="w-full md:w-[420px] bg-black/40 flex flex-col overflow-hidden">
+        {/* Right: Controls & EQ or Playlist */}
+        <div className={`w-full md:w-[420px] bg-black/40 flex flex-col overflow-hidden transition-all ${showPlaylist ? 'md:w-[480px]' : ''}`}>
              
              {/* Tab Switcher */}
              <div className="p-6 pb-2">
                 <div className="flex p-1 bg-white/5 rounded-xl">
                     <button 
-                    onClick={() => setShowEQ(false)}
-                    className={`flex-1 py-3 text-xs uppercase tracking-widest rounded-lg transition-all ${!showEQ ? 'bg-white text-black font-bold shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => setShowPlaylist(false)}
+                    className={`flex-1 py-3 text-xs uppercase tracking-widest rounded-lg transition-all ${!showPlaylist ? 'bg-white text-black font-bold shadow-lg' : 'text-gray-400 hover:text-white'}`}
                     >
                         Controls
                     </button>
                     <button 
                     onClick={() => setShowEQ(true)}
-                    className={`flex-1 py-3 text-xs uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 ${showEQ ? 'bg-cyan-400 text-black font-bold shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    className={`flex-1 py-3 text-xs uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 ${showEQ && !showPlaylist ? 'bg-cyan-400 text-black font-bold shadow-lg' : 'text-gray-400 hover:text-white'}`}
                     >
                         Studio Rack
+                    </button>
+                    <button 
+                    onClick={() => setShowPlaylist(true)}
+                    className={`flex-1 py-3 text-xs uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 ${showPlaylist ? 'bg-purple-400 text-black font-bold shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        <Music size={12} /> Playlist
                     </button>
                 </div>
              </div>
 
              {/* Content Area */}
              <div className="flex-1 p-6 pt-2 overflow-hidden flex flex-col">
-                 {!showEQ ? (
+                 {showPlaylist ? (
+                    <Playlist
+                        tracks={playlist}
+                        currentTrackId={currentTrack.id}
+                        onTrackSelect={handlePlaylistTrackSelect}
+                        onTracksAdd={handleAddPlaylistTracks}
+                        onTrackRemove={handleRemovePlaylistTrack}
+                        onReorder={handleReorderPlaylist}
+                        isPlaying={isPlaying}
+                    />
+                 ) : !showEQ ? (
                      <div className="flex flex-col h-full justify-center space-y-4">
                          <div className="p-6 rounded-3xl bg-gradient-to-br from-purple-900/20 to-black border border-white/5 flex flex-col items-center justify-center text-center space-y-2 h-64">
                              {isVoiceActive ? <Zap size={32} className="text-red-400 mb-2 animate-bounce" /> : <Activity size={32} className="text-purple-400 mb-2" />}
@@ -485,6 +570,31 @@ const App: React.FC = () => {
                     <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] text-gray-500 hover:text-gray-300 underline">
                         Billing Information
                     </a>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Streaming Source Modal */}
+      {showStreamingSource && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-2xl bg-[#0a0a0a] border border-orange-500/30 rounded-3xl p-8 shadow-[0_0_100px_rgba(249,115,22,0.15)] relative overflow-hidden max-h-[80vh] flex flex-col">
+                <div className="absolute -top-20 -right-20 w-64 h-64 bg-orange-600/20 rounded-full blur-3xl pointer-events-none"></div>
+
+                <div className="flex justify-between items-center mb-6 relative z-10">
+                    <h3 className="text-2xl font-bold text-white flex items-center gap-3">
+                        <Wifi className="text-orange-500" /> Stream Playlists
+                    </h3>
+                    <button onClick={() => setShowStreamingSource(false)} className="text-gray-500 hover:text-white p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20}/></button>
+                </div>
+
+                <div className="flex-1 overflow-hidden min-h-0 relative z-10">
+                    <StreamingSource 
+                        onTracksImport={(tracks) => {
+                            setPlaylist(prev => [...prev, ...tracks]);
+                        }}
+                        onClose={() => setShowStreamingSource(false)}
+                    />
                 </div>
             </div>
         </div>
