@@ -72,10 +72,9 @@ class SpotifyService {
 
     const authUrl = new URL('https://accounts.spotify.com/authorize');
     authUrl.searchParams.append('client_id', this.clientId);
-    authUrl.searchParams.append('response_type', 'code'); // Changed from 'token' to 'code' for auth code flow
+    authUrl.searchParams.append('response_type', 'code');
     authUrl.searchParams.append('redirect_uri', SPOTIFY_REDIRECT_URI);
     authUrl.searchParams.append('state', state);
-    authUrl.searchParams.append('scope', 'playlist-read-public');
     authUrl.searchParams.append('show_dialog', 'true');
 
     console.log('🎵 Spotify Auth:', {
