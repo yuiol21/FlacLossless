@@ -187,15 +187,39 @@ const App: React.FC = () => {
     setPlaylist(prev => [...prev, ...newTracks]);
   };
 
-  const handlePlaylistTrackSelect = (track: Track) => {
-    // YouTube videos - open in new window to play
+  const handlePlaylistTrackSelect = async (track: Track) => {
+    // YouTube videos - play via audio extraction from Invidious
     if (track.id.startsWith('youtube-')) {
-      setCurrentTrack(track);
-      setShowPlaylist(true); // Auto-show playlist
-      setIsPlaying(true);
-      
-      // Open YouTube in a new tab for audio playback
-      window.open(track.url, 'youtube-player', 'width=800,height=600');
+      const videoId = track.url.match(/v=([^&]+)/)?.[1];
+      if (videoId) {
+        setCurrentTrack(track);
+        setShowPlaylist(true); // Auto-show playlist
+        
+        if (audioRef.current) {
+          try {
+            // Get audio stream URL from Invidious
+            const audioUrl = await youtubeService.getPlayableAudioUrl(videoId);
+            
+            if (audioUrl && !audioUrl.includes('youtube.com')) {
+              // We got a direct audio stream URL
+              audioRef.current.src = audioUrl;
+              audioRef.current.crossOrigin = 'anonymous';
+              audioRef.current.load();
+              await audioRef.current.play().catch(e => {
+                console.error('Playback error:', e);
+              });
+              setIsPlaying(true);
+            } else {
+              // Fallback: Open in YouTube
+              console.warn('Could not extract audio stream, opening YouTube');
+              window.open(track.url, '_blank');
+            }
+          } catch (e) {
+            console.error('Error playing YouTube audio:', e);
+            window.open(track.url, '_blank');
+          }
+        }
+      }
       return;
     }
 
