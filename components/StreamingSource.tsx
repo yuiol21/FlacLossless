@@ -17,8 +17,7 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
   const [youtubePlaylists, setYoutubePlaylists] = useState<YouTubePlaylist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | YouTubePlaylist | null>(null);
   const [playlistTracks, setPlaylistTracks] = useState<SpotifyTrack[] | YouTubeVideo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedSongs, setSelectedSongs] = useState<any[]>([]);
 
   // Handle Spotify callback on mount
   useEffect(() => {
@@ -34,6 +33,17 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
     spotifyService.logout();
     setSpotifyAuth(false);
     setSpotifyPlaylists([]);
+  };
+
+  const toggleYouTubeSong = (video: any) => {
+    setSelectedSongs(prev => {
+      const isSelected = prev.find(s => s.id === video.id);
+      if (isSelected) {
+        return prev.filter(s => s.id !== video.id);
+      } else {
+        return [...prev, video];
+      }
+    });
   };
 
   const handleSearch = async () => {
@@ -264,28 +274,40 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
           {/* Song Results */}
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
             {playlistTracks.length > 0 ? (
-              playlistTracks.map((video: any) => (
-                <div
-                  key={video.id}
-                  onClick={() => handlePlaylistSelect(video)}
-                  className="p-3 bg-white/5 hover:bg-white/10 rounded cursor-pointer transition-colors group"
-                >
-                  <div className="flex items-start gap-2">
-                    {video.thumbnail && (
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="w-10 h-10 rounded object-cover flex-none"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-white truncate text-sm">{video.title}</div>
-                      <div className="text-gray-500 truncate text-xs">{video.channelTitle}</div>
+              playlistTracks.map((video: any) => {
+                const isSelected = selectedSongs.find(s => s.id === video.id);
+                return (
+                  <div
+                    key={video.id}
+                    onClick={() => toggleYouTubeSong(video)}
+                    className={`p-3 rounded cursor-pointer transition-colors group ${
+                      isSelected ? 'bg-red-500/20 border border-red-500' : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center flex-none mt-1 ${
+                        isSelected ? 'bg-red-500 border-red-500' : 'border-white/30'
+                      }`}>
+                        {isSelected && <div className="text-white text-xs">✓</div>}
+                      </div>
+                      {video.thumbnail && (
+                        <img
+                          src={video.thumbnail}
+                          alt={video.title}
+                          className="w-10 h-10 rounded object-cover flex-none"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white truncate text-sm">{video.title}</div>
+                        <div className="text-gray-500 truncate text-xs">{video.channelTitle}</div>
+                      </div>
+                      <Play size={16} className={`flex-none opacity-0 group-hover:opacity-100 transition-opacity mt-1 ${
+                        isSelected ? 'text-red-400' : 'text-gray-400'
+                      }`} />
                     </div>
-                    <Play size={16} className="flex-none text-red-400 opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="text-center text-gray-500 text-sm py-8">
                 🎵 Search for a song to get started
@@ -294,12 +316,23 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
           </div>
 
           {/* Import Button */}
-          {playlistTracks.length > 0 && (
+          {selectedSongs.length > 0 && (
             <button
-              onClick={handleImportPlaylist}
+              onClick={() => {
+                const importedTracks: Track[] = selectedSongs.map((video: any) => ({
+                  id: `youtube-${video.videoId}`,
+                  title: video.title || 'Unknown',
+                  artist: video.channelTitle || 'Unknown',
+                  url: video.url,
+                  cover: video.thumbnail || ''
+                }));
+                onTracksImport(importedTracks);
+                setSelectedSongs([]);
+                onClose();
+              }}
               className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
             >
-              <Music size={14} /> Import {playlistTracks.length} Song{playlistTracks.length !== 1 ? 's' : ''}
+              <Music size={14} /> Import {selectedSongs.length} Song{selectedSongs.length !== 1 ? 's' : ''}
             </button>
           )}
         </div>
