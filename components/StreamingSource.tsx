@@ -37,15 +37,18 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
     setSpotifyPlaylists([]);
   };
 
-  const toggleYouTubeSong = (video: any) => {
-    setSelectedSongs(prev => {
-      const isSelected = prev.find(s => s.id === video.id);
-      if (isSelected) {
-        return prev.filter(s => s.id !== video.id);
-      } else {
-        return [...prev, video];
-      }
-    });
+  const toggleYouTubeSong = (video: any, e: React.MouseEvent) => {
+    // Only toggle if clicking the checkbox area
+    if ((e.target as HTMLElement).closest('.checkbox')) {
+      setSelectedSongs(prev => {
+        const isSelected = prev.find(s => s.id === video.id);
+        if (isSelected) {
+          return prev.filter(s => s.id !== video.id);
+        } else {
+          return [...prev, video];
+        }
+      });
+    }
   };
 
   const handleSearch = async () => {
@@ -281,17 +284,21 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
                 return (
                   <div
                     key={video.id}
-                    onClick={() => toggleYouTubeSong(video)}
-                    className={`p-3 rounded cursor-pointer transition-colors group ${
+                    className={`p-3 rounded transition-colors group ${
                       isSelected ? 'bg-red-500/20 border border-red-500' : 'bg-white/5 hover:bg-white/10'
                     }`}
                   >
                     <div className="flex items-start gap-2">
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center flex-none mt-1 ${
-                        isSelected ? 'bg-red-500 border-red-500' : 'border-white/30'
-                      }`}>
+                      <button
+                        onClick={(e) => toggleYouTubeSong(video, e)}
+                        className="checkbox w-5 h-5 rounded border flex items-center justify-center flex-none mt-1 hover:bg-red-500/30 transition-colors"
+                        style={{
+                          borderColor: isSelected ? '#ef4444' : 'rgba(255,255,255,0.3)',
+                          backgroundColor: isSelected ? '#ef4444' : 'transparent'
+                        }}
+                      >
                         {isSelected && <div className="text-white text-xs">✓</div>}
-                      </div>
+                      </button>
                       {video.thumbnail && (
                         <img
                           src={video.thumbnail}
@@ -303,8 +310,8 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
                         <div className="font-semibold text-white truncate text-sm">{video.title}</div>
                         <div className="text-gray-500 truncate text-xs">{video.channelTitle}</div>
                       </div>
-                      <Play size={16} className={`flex-none opacity-0 group-hover:opacity-100 transition-opacity mt-1 ${
-                        isSelected ? 'text-red-400' : 'text-gray-400'
+                      <Play size={16} className={`flex-none cursor-pointer hover:scale-110 transition-transform mt-1 ${
+                        isSelected ? 'text-red-400' : 'text-gray-400 hover:text-red-400'
                       }`} />
                     </div>
                   </div>
