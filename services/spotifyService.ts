@@ -173,6 +173,21 @@ class SpotifyService {
     }
   }
 
+  // Try to get a playable URL for a track
+  async getPlayableTrackUrl(track: SpotifyTrack): Promise<string> {
+    // Priority 1: Use preview URL if available
+    if (track.preview_url && track.preview_url.trim()) {
+      return track.preview_url;
+    }
+
+    // Priority 2: Try to find alternative sources
+    // This is a limitation - Spotify API only provides preview URLs for non-premium users
+    // To play full tracks, user needs premium account and app integration
+    
+    console.warn('No preview URL available for track:', track.name);
+    return '';
+  }
+
   async getUserPlaylists(): Promise<SpotifyPlaylist[]> {
     return [];
   }

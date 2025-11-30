@@ -188,15 +188,24 @@ const App: React.FC = () => {
   };
 
   const handlePlaylistTrackSelect = (track: Track) => {
-    // YouTube and Spotify links should open in a new tab instead of trying to play
-    if (track.id.startsWith('youtube-') || track.id.startsWith('spotify-')) {
+    // YouTube links should open in a new tab
+    if (track.id.startsWith('youtube-')) {
       if (track.url) {
         window.open(track.url, '_blank');
       }
       return;
     }
     
-    // Local tracks can be played directly
+    // Check if it's a Spotify URL (not a preview)
+    if (track.id.startsWith('spotify-') && !track.url.includes('d.scdn.co')) {
+      // No preview URL available - open in Spotify
+      if (track.url) {
+        window.open(track.url, '_blank');
+      }
+      return;
+    }
+
+    // Local tracks and Spotify previews can be played directly
     if (!track.url) {
       alert('⚠️ No playable URL for this track');
       return;
@@ -205,7 +214,16 @@ const App: React.FC = () => {
     setCurrentTrack(track);
     if (audioRef.current) {
         audioRef.current.src = track.url;
+        audioRef.current.crossOrigin = 'anonymous';
         audioRef.current.load();
+        audioRef.current.play().catch(e => {
+          console.error('Playback error:', e);
+          // If preview fails, open in Spotify
+          if (track.id.startsWith('spotify-')) {
+            alert('Preview unavailable. Opening in Spotify...');
+            window.open(track.url, '_blank');
+          }
+        });
         setIsPlaying(true);
     }
   };

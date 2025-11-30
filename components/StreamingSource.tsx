@@ -83,14 +83,20 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
       .map((item: any) => {
         if (activeTab === 'spotify') {
           const spotifyTrack = item as SpotifyTrack;
-          const previewUrl = spotifyTrack.preview_url || '';
-          const spotifyUrl = spotifyTrack.external_urls?.spotify || '';
+          
+          // Prioritize preview URL for in-app playback
+          let url = spotifyTrack.preview_url || '';
+          
+          // If no preview, use Spotify link as fallback
+          if (!url) {
+            url = spotifyTrack.external_urls?.spotify || '';
+          }
           
           return {
             id: `spotify-${spotifyTrack.id}`,
             title: spotifyTrack.name || 'Unknown',
             artist: spotifyTrack.artists?.map(a => a.name).join(', ') || 'Unknown',
-            url: previewUrl || spotifyUrl || '', // Use preview if available, fallback to Spotify link
+            url: url,
             cover: spotifyTrack.album?.images[0]?.url || ''
           };
         } else {
@@ -106,9 +112,15 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
       })
       .filter(track => track.url); // Only import tracks with valid URLs
 
+    const previewCount = importedTracks.filter(t => t.id.startsWith('spotify-') && t.url.includes('d.scdn.co')).length;
+    
     if (importedTracks.length === 0) {
       alert('⚠️ No playable tracks found in this playlist.\n\nNote: Some songs may not have preview URLs available.');
       return;
+    }
+
+    if (previewCount < importedTracks.length) {
+      alert(`✅ Imported ${importedTracks.length} tracks\n⚠️ ${importedTracks.length - previewCount} tracks will open in Spotify\n🎵 ${previewCount} have 30-second previews`);
     }
 
     console.log('Importing tracks:', importedTracks);
