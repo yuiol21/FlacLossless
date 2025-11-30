@@ -7,7 +7,7 @@ import Visualizer from './components/Visualizer';
 import Equalizer from './components/Equalizer';
 import PlayerControls from './components/PlayerControls';
 import { Track } from './types';
-import { X, Mic2, Disc, Sliders, Sparkles, Activity, Download, Zap } from 'lucide-react';
+import { X, Mic2, Disc, Sliders, Sparkles, Activity, Download, Zap, Key } from 'lucide-react';
 
 const App: React.FC = () => {
   // State
@@ -41,6 +41,7 @@ const App: React.FC = () => {
   
   // Live Voice State
   const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
 
   // Stats
   const [sampleRate, setSampleRate] = useState(0);
@@ -55,6 +56,18 @@ const App: React.FC = () => {
       e.preventDefault();
       setInstallPrompt(e);
     });
+    
+    // Check for API Key validity on mount
+    const checkKey = async () => {
+        if ((window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
+            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+            setHasApiKey(hasKey);
+        } else {
+            // Fallback for environment variable existence (local dev)
+            setHasApiKey(!!process.env.API_KEY);
+        }
+    };
+    checkKey();
   }, []);
 
   // Initialization
@@ -160,16 +173,28 @@ const App: React.FC = () => {
     }
   };
 
+  // Wrapper to handle API Key prompt
+  const ensureApiKey = async () => {
+      if (hasApiKey) return true;
+      if ((window as any).aistudio && (window as any).aistudio.openSelectKey) {
+          const success = await (window as any).aistudio.openSelectKey();
+          if (success) {
+              setHasApiKey(true);
+              return true;
+          }
+      }
+      return false;
+  }
+
   // Toggle Live Voice Socket
   const toggleVoiceControl = async () => {
     if (isVoiceActive) {
         liveService.disconnect();
         setIsVoiceActive(false);
     } else {
-        if (!process.env.API_KEY) {
-            alert("API Key required for Live Voice.");
-            return;
-        }
+        const keyOk = await ensureApiKey();
+        if (!keyOk) return;
+
         setIsVoiceActive(true);
         try {
             await liveService.connect(
@@ -188,16 +213,20 @@ const App: React.FC = () => {
         } catch (e) {
             console.error(e);
             setIsVoiceActive(false);
-            alert("Failed to connect to Live API");
+            // Check if error is related to key
+            if (e.toString().includes("Requested entity was not found") && (window as any).aistudio) {
+                setHasApiKey(false);
+                await (window as any).aistudio.openSelectKey();
+            } else {
+                alert("Failed to connect to Live API: " + e);
+            }
         }
     }
   };
 
   const handleAIGenerate = async (useAudioAnalysis = false) => {
-    if (!process.env.API_KEY) {
-        alert("Please configure your Gemini API Key in the environment to use this feature.");
-        return;
-    }
+    const keyOk = await ensureApiKey();
+    if (!keyOk) return;
 
     setIsGenerating(true);
     if (useAudioAnalysis) setIsAnalyzing(true);
@@ -253,6 +282,11 @@ const App: React.FC = () => {
                  <h1 className="font-bold text-xl tracking-tighter brand-font">SONICPULSE <span className="text-purple-400">ULTRA</span></h1>
               </div>
               <div className="flex gap-2 items-center">
+                 {!hasApiKey && (
+                     <button onClick={() => ensureApiKey()} className="p-1 px-2 rounded-full border border-yellow-500/30 text-[10px] bg-yellow-900/20 text-yellow-400 flex items-center gap-1 hover:bg-yellow-900/40 transition-colors">
+                        <Key size={10} /> CONNECT KEY
+                     </button>
+                 )}
                  {installPrompt && (
                      <button onClick={handleInstallClick} className="p-1 px-2 rounded-full border border-cyan-500/30 text-[10px] bg-cyan-900/20 text-cyan-400 flex items-center gap-1 hover:bg-cyan-900/40 transition-colors">
                         <Download size={10} /> INSTALL APP
@@ -446,6 +480,12 @@ const App: React.FC = () => {
                 >
                     {isGenerating && !isAnalyzing ? "Generating..." : "Generate from Text"}
                 </button>
+                
+                <div className="mt-6 text-center">
+                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] text-gray-500 hover:text-gray-300 underline">
+                        Billing Information
+                    </a>
+                </div>
             </div>
         </div>
       )}

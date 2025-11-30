@@ -26,4 +26,5 @@ export const PRESETS: Record<string, EqualizerPreset> = {
   }
 };
 
-export const DEMO_TRACK_URL = "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3";
+// Use a reliable Pixabay royalty-free track to prevent "No supported source" errors
+export const DEMO_TRACK_URL = "https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3";

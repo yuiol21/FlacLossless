@@ -1,7 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
 export interface AudioAnalysisData {
     bass: number; // 0-255
     mid: number; // 0-255
@@ -13,10 +11,14 @@ export const generateEQPreset = async (
     trackInfo?: { title: string, artist: string },
     analysis?: AudioAnalysisData
 ): Promise<{ name: string; gains: number[] } | null> => {
+  // Initialize AI client here to ensure it uses the latest process.env.API_KEY
+  // which might be set dynamically by the user via the UI
   if (!process.env.API_KEY) {
     console.warn("No API Key provided for Gemini");
     return null;
   }
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     let systemPrompt = `You are a world-class Audio Mastering Engineer. 

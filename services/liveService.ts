@@ -1,12 +1,6 @@
-import { GoogleGenAI, FunctionDeclaration, Type, Blob, Modality } from "@google/genai";
-import { EQ_FREQUENCIES } from "../constants";
+import { GoogleGenAI, FunctionDeclaration, Type, Modality } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
-// LiveSession type is not exported by the SDK, so we define a loose type for it.
-type LiveSession = any;
-
-// 1. Define Tools (Functions the AI can call)
+// 1. Define Tools
 const updateEQTool: FunctionDeclaration = {
   name: "updateEQ",
   description: "Updates the 10-band equalizer settings based on a description (e.g., 'Bass Boost', 'Vocal Clarity').",
@@ -31,77 +25,142 @@ const controlPlaybackTool: FunctionDeclaration = {
     type: Type.OBJECT,
     properties: {
       action: { type: Type.STRING, enum: ["play", "pause", "resume"], description: "The playback action" },
-      volume: { type: Type.NUMBER, description: "Volume level from 0.0 to 1.0" },
       playbackRate: { type: Type.NUMBER, description: "Playback speed/pitch multiplier (0.5 to 2.0)" }
     }
   }
 };
 
-// 2. Audio Utils for Live API
-const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-
-function base64ToBlob(base64: string): Blob {
-    return {
-        data: base64,
-        mimeType: 'audio/pcm;rate=24000' // Model output format
-    };
-}
-
-// 3. Service Class
 class LiveService {
-  private session: LiveSession | null = null;
+  private session: any | null = null;
   private inputProcessor: ScriptProcessorNode | null = null;
   private inputStream: MediaStream | null = null;
+  
+  // Audio Contexts
+  private inputContext: AudioContext | null = null;
+  private outputContext: AudioContext | null = null;
+  
+  // Audio Playback Queue
+  private nextStartTime = 0;
+  private sourceNodes = new Set<AudioBufferSourceNode>();
+
   private onEQUpdate: ((gains: number[]) => void) | null = null;
   private onPlaybackUpdate: ((action: string, val?: number) => void) | null = null;
+  private onStatusChange: ((status: string) => void) | null = null;
 
   async connect(
     onEQUpdate: (gains: number[]) => void, 
-    onPlaybackUpdate: (action: string, val?: number) => void
+    onPlaybackUpdate: (action: string, val?: number) => void,
+    onStatusChange?: (status: string) => void
   ) {
     this.onEQUpdate = onEQUpdate;
     this.onPlaybackUpdate = onPlaybackUpdate;
+    if (onStatusChange) this.onStatusChange = onStatusChange;
 
-    // Get Microphone Stream
-    this.inputStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.notifyStatus("Initializing Audio...");
+
+    // 1. Initialize Audio Contexts
+    // Input at 16kHz (Standard for Speech Rec)
+    this.inputContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    // Output at 24kHz (Gemini Standard Output)
+    this.outputContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+    // Resume contexts in case they were auto-suspended
+    await this.inputContext.resume();
+    await this.outputContext.resume();
+
+    this.notifyStatus("Connecting to Gemini...");
+
+    // 2. Get Microphone
+    try {
+        this.inputStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+        console.error("Microphone access denied", e);
+        this.notifyStatus("Mic Access Denied");
+        throw e;
+    }
+
+    // 3. Connect to Live API
+    // Initialize AI here to grab the latest key
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
     
-    // Connect to Gemini Live
     const sessionPromise = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-09-2025',
       config: {
+        responseModalities: [Modality.AUDIO], // CRITICAL: Must be AUDIO
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+        },
         tools: [{ functionDeclarations: [updateEQTool, controlPlaybackTool] }],
-        systemInstruction: "You are the AI engine of a high-tech music player called SonicPulse. Users will speak commands to change the equalizer or playback. When asked to change sound, generate specific 10-band gain values and call the updateEQ tool. Be brief and robotic.",
+        systemInstruction: "You are SonicPulse, a futuristic music player AI. Confirm actions briefly with a robotic personality. Use the tools provided to change EQ or Playback.",
       },
       callbacks: {
         onopen: () => {
           console.log("Live Socket Connected");
-          this.startAudioStream(sessionPromise);
+          this.notifyStatus("Listening");
+          this.startAudioInput(sessionPromise);
         },
         onmessage: (msg) => {
-          // Handle Function Calls
-          if (msg.toolCall) {
-            this.handleToolCall(msg.toolCall, sessionPromise);
-          }
+          this.handleMessage(msg, sessionPromise);
         },
-        onclose: () => console.log("Live Socket Closed"),
-        onerror: (err) => console.error("Live Socket Error", err)
+        onclose: () => {
+            console.log("Live Socket Closed");
+            this.notifyStatus("Disconnected");
+        },
+        onerror: (err) => {
+            console.error("Live Socket Error", err);
+            this.notifyStatus("Error");
+        }
       }
     });
 
     this.session = await sessionPromise;
   }
 
-  private startAudioStream(sessionPromise: Promise<LiveSession>) {
-    if (!this.inputStream) return;
+  // Handle Incoming Data (Audio + Tool Calls)
+  private async handleMessage(msg: any, sessionPromise: Promise<any>) {
+      // 1. Play Audio Response
+      const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+      if (audioData) {
+          this.playAudioChunk(audioData);
+      }
 
-    const source = audioContext.createMediaStreamSource(this.inputStream);
-    // Use ScriptProcessor for raw PCM data (Live API requirement)
-    this.inputProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+      // 2. Handle Tool Calls
+      if (msg.toolCall) {
+          for (const fc of msg.toolCall.functionCalls) {
+              let result = { status: "ok" };
+
+              if (fc.name === "updateEQ" && this.onEQUpdate) {
+                  this.onEQUpdate(fc.args.gains);
+                  result = { status: "EQ Updated" };
+              } else if (fc.name === "controlPlayback" && this.onPlaybackUpdate) {
+                  if (fc.args.action) this.onPlaybackUpdate(fc.args.action);
+                  if (fc.args.playbackRate) this.onPlaybackUpdate("rate", fc.args.playbackRate);
+                  result = { status: "Playback Updated" };
+              }
+
+              const session = await sessionPromise;
+              session.sendToolResponse({
+                  functionResponses: {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result }
+                  }
+              });
+          }
+      }
+  }
+
+  // Stream Mic to Gemini
+  private startAudioInput(sessionPromise: Promise<any>) {
+    if (!this.inputStream || !this.inputContext) return;
+
+    const source = this.inputContext.createMediaStreamSource(this.inputStream);
+    this.inputProcessor = this.inputContext.createScriptProcessor(4096, 1, 1);
     
     this.inputProcessor.onaudioprocess = (e) => {
       const inputData = e.inputBuffer.getChannelData(0);
       
-      // Convert Float32 to Int16 PCM for Gemini
+      // Float32 -> Int16 PCM
       const pcmData = new Int16Array(inputData.length);
       for (let i = 0; i < inputData.length; i++) {
         const s = Math.max(-1, Math.min(1, inputData[i]));
@@ -128,46 +187,75 @@ class LiveService {
     };
 
     source.connect(this.inputProcessor);
-    this.inputProcessor.connect(audioContext.destination);
+    this.inputProcessor.connect(this.inputContext.destination);
   }
 
-  private handleToolCall(toolCall: any, sessionPromise: Promise<LiveSession>) {
-    toolCall.functionCalls.forEach((fc: any) => {
-        let result = { status: "ok" };
+  // Play Audio Chunks from Gemini
+  private async playAudioChunk(base64Data: string) {
+      if (!this.outputContext) return;
 
-        if (fc.name === "updateEQ" && this.onEQUpdate) {
-            this.onEQUpdate(fc.args.gains);
-            result = { status: "EQ Updated" };
-        } else if (fc.name === "controlPlayback" && this.onPlaybackUpdate) {
-            if (fc.args.action) this.onPlaybackUpdate(fc.args.action);
-            if (fc.args.playbackRate) this.onPlaybackUpdate("rate", fc.args.playbackRate);
-            result = { status: "Playback Updated" };
-        }
+      const binaryString = atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      const int16 = new Int16Array(bytes.buffer);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / 32768.0;
+      }
 
-        // Send response back to model
-        sessionPromise.then(session => {
-            session.sendToolResponse({
-                functionResponses: {
-                    id: fc.id,
-                    name: fc.name,
-                    response: { result }
-                }
-            });
-        });
-    });
+      const buffer = this.outputContext.createBuffer(1, float32.length, 24000);
+      buffer.getChannelData(0).set(float32);
+
+      const source = this.outputContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.outputContext.destination);
+      
+      // Audio Scheduling Logic
+      const now = this.outputContext.currentTime;
+      // Start at the end of the last chunk or now, whichever is later
+      const startTime = Math.max(now, this.nextStartTime);
+      
+      source.start(startTime);
+      
+      // Update cursor
+      this.nextStartTime = startTime + buffer.duration;
+      
+      this.sourceNodes.add(source);
+      source.onended = () => {
+          this.sourceNodes.delete(source);
+      };
+  }
+
+  private notifyStatus(status: string) {
+      if (this.onStatusChange) this.onStatusChange(status);
   }
 
   disconnect() {
-    if (this.session) {
-      // No explicit close method in current SDK type, usually strictly managed by connection drop
-      // but we can stop sending audio
-    }
-    if (this.inputStream) {
-        this.inputStream.getTracks().forEach(t => t.stop());
-    }
-    if (this.inputProcessor) {
-        this.inputProcessor.disconnect();
-    }
+      if (this.session) {
+          // No direct close method on sessionPromise usually, but we can close stream
+          this.session = null;
+      }
+      if (this.inputStream) {
+          this.inputStream.getTracks().forEach(t => t.stop());
+          this.inputStream = null;
+      }
+      if (this.inputProcessor) {
+          this.inputProcessor.disconnect();
+          this.inputProcessor = null;
+      }
+      if (this.inputContext) {
+          this.inputContext.close();
+          this.inputContext = null;
+      }
+      if (this.outputContext) {
+          this.outputContext.close();
+          this.outputContext = null;
+      }
+      this.notifyStatus("Disconnected");
   }
 }
 
