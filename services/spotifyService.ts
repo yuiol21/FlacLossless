@@ -131,7 +131,7 @@ class SpotifyService {
         const data = await response.json();
         const tracks = (data.items || [])
           .map((item: any) => item.track)
-          .filter((track: any) => track && track.id && track.preview_url);
+          .filter((track: any) => track && track.id); // Only require id, not preview_url
         
         allTracks = [...allTracks, ...tracks];
         url = data.next || '';

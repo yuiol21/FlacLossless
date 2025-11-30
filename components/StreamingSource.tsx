@@ -75,27 +75,29 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
   const handleImportPlaylist = () => {
     if (!playlistTracks) return;
 
-    const importedTracks: Track[] = playlistTracks.map((item: any, idx: number) => {
-      if (activeTab === 'spotify') {
-        const spotifyTrack = item as SpotifyTrack;
-        return {
-          id: `spotify-${spotifyTrack.id}`,
-          title: spotifyTrack.name,
-          artist: spotifyTrack.artists.map(a => a.name).join(', '),
-          url: spotifyTrack.preview_url || '',
-          cover: spotifyTrack.album.images[0]?.url || ''
-        };
-      } else {
-        const youtubeVideo = item as YouTubeVideo;
-        return {
-          id: `youtube-${youtubeVideo.videoId}`,
-          title: youtubeVideo.title,
-          artist: youtubeVideo.channelTitle,
-          url: youtubeVideo.url, // YouTube watch URL (will open in new tab)
-          cover: youtubeVideo.thumbnail || ''
-        };
-      }
-    });
+    const importedTracks: Track[] = playlistTracks
+      .filter((item: any) => item) // Filter out null items
+      .map((item: any, idx: number) => {
+        if (activeTab === 'spotify') {
+          const spotifyTrack = item as SpotifyTrack;
+          return {
+            id: `spotify-${spotifyTrack.id}`,
+            title: spotifyTrack.name || 'Unknown',
+            artist: spotifyTrack.artists?.map(a => a.name).join(', ') || 'Unknown',
+            url: spotifyTrack.preview_url || '',
+            cover: spotifyTrack.album?.images[0]?.url || ''
+          };
+        } else {
+          const youtubeVideo = item as YouTubeVideo;
+          return {
+            id: `youtube-${youtubeVideo.videoId}`,
+            title: youtubeVideo.title || 'Unknown',
+            artist: youtubeVideo.channelTitle || 'Unknown',
+            url: youtubeVideo.url,
+            cover: youtubeVideo.thumbnail || ''
+          };
+        }
+      });
 
     onTracksImport(importedTracks);
     onClose();
@@ -164,10 +166,10 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
                   </div>
                   <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
                     {playlistTracks.map((track: any) => (
-                      <div key={track.id} className="p-2 bg-white/5 rounded hover:bg-white/10 cursor-pointer text-xs">
-                        <div className="font-semibold text-white truncate">{(track as SpotifyTrack).name}</div>
+                      <div key={track?.id || Math.random()} className="p-2 bg-white/5 rounded hover:bg-white/10 cursor-pointer text-xs">
+                        <div className="font-semibold text-white truncate">{track?.name || 'Unknown Track'}</div>
                         <div className="text-gray-500 truncate">
-                          {(track as SpotifyTrack).artists.map((a: any) => a.name).join(', ')}
+                          {track?.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist'}
                         </div>
                       </div>
                     ))}
