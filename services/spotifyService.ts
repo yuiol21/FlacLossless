@@ -97,7 +97,6 @@ class SpotifyService {
     authUrl.searchParams.append('response_type', 'code');
     authUrl.searchParams.append('redirect_uri', SPOTIFY_REDIRECT_URI);
     authUrl.searchParams.append('state', state);
-    authUrl.searchParams.append('scope', 'playlist-read-public');
     authUrl.searchParams.append('code_challenge_method', 'S256');
     authUrl.searchParams.append('code_challenge', challenge);
     authUrl.searchParams.append('show_dialog', 'true');
