@@ -73,18 +73,24 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
   };
 
   const handleImportPlaylist = () => {
-    if (!playlistTracks) return;
+    if (!playlistTracks || playlistTracks.length === 0) {
+      alert('No tracks to import');
+      return;
+    }
 
     const importedTracks: Track[] = playlistTracks
-      .filter((item: any) => item) // Filter out null items
-      .map((item: any, idx: number) => {
+      .filter((item: any) => item && item.id) // Filter out null items
+      .map((item: any) => {
         if (activeTab === 'spotify') {
           const spotifyTrack = item as SpotifyTrack;
+          const previewUrl = spotifyTrack.preview_url || '';
+          const spotifyUrl = spotifyTrack.external_urls?.spotify || '';
+          
           return {
             id: `spotify-${spotifyTrack.id}`,
             title: spotifyTrack.name || 'Unknown',
             artist: spotifyTrack.artists?.map(a => a.name).join(', ') || 'Unknown',
-            url: spotifyTrack.preview_url || '',
+            url: previewUrl || spotifyUrl || '', // Use preview if available, fallback to Spotify link
             cover: spotifyTrack.album?.images[0]?.url || ''
           };
         } else {
@@ -97,8 +103,15 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
             cover: youtubeVideo.thumbnail || ''
           };
         }
-      });
+      })
+      .filter(track => track.url); // Only import tracks with valid URLs
 
+    if (importedTracks.length === 0) {
+      alert('⚠️ No playable tracks found in this playlist.\n\nNote: Some songs may not have preview URLs available.');
+      return;
+    }
+
+    console.log('Importing tracks:', importedTracks);
     onTracksImport(importedTracks);
     onClose();
   };

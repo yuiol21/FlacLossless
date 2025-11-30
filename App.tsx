@@ -188,9 +188,17 @@ const App: React.FC = () => {
   };
 
   const handlePlaylistTrackSelect = (track: Track) => {
-    // YouTube links should open in a new tab instead of trying to play
-    if (track.id.startsWith('youtube-')) {
-      window.open(track.url, '_blank');
+    // YouTube and Spotify links should open in a new tab instead of trying to play
+    if (track.id.startsWith('youtube-') || track.id.startsWith('spotify-')) {
+      if (track.url) {
+        window.open(track.url, '_blank');
+      }
+      return;
+    }
+    
+    // Local tracks can be played directly
+    if (!track.url) {
+      alert('⚠️ No playable URL for this track');
       return;
     }
     
