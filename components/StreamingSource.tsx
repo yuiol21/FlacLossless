@@ -22,22 +22,8 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
 
   // Handle Spotify callback on mount
   useEffect(() => {
-    const handleAuthCallback = async () => {
-      if (window.location.hash) {
-        try {
-          const result = spotifyService.handleCallback();
-          if (result) {
-            setSpotifyAuth(true);
-            setError(null);
-          } else {
-            setError('Failed to authenticate with Spotify. Please try again.');
-          }
-        } catch (e) {
-          setError(`Auth error: ${e instanceof Error ? e.message : 'Unknown error'}`);
-        }
-      }
-    };
-    handleAuthCallback();
+    spotifyService.handleCallback();
+    setSpotifyAuth(true);
   }, []);
 
   const handleSpotifyLogin = () => {
@@ -144,47 +130,24 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
       {/* Spotify Tab */}
       {activeTab === 'spotify' && (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Auth Section */}
-          <div className="flex-none mb-4">
-            {!spotifyAuth ? (
-              <button
-                onClick={handleSpotifyLogin}
-                className="w-full py-2 px-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <LogIn size={14} /> Login with Spotify
-              </button>
-            ) : (
-              <button
-                onClick={handleSpotifyLogout}
-                className="w-full py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <LogOut size={14} /> Logout
-              </button>
-            )}
+          {/* Search Section */}
+          <div className="flex-none mb-4 flex gap-2">
+            <input
+              type="text"
+              placeholder="Search playlists (e.g. 'Top 50', 'Pop')..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-white/40"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={loading}
+              className="px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-600 text-white rounded font-bold text-sm transition-colors"
+            >
+              {loading ? <Loader size={14} className="animate-spin" /> : <Search size={14} />}
+            </button>
           </div>
-
-          {spotifyAuth && (
-            <>
-              {/* Search Section */}
-              <div className="flex-none mb-4 flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Search playlists..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-white/40"
-                />
-                <button
-                  onClick={handleSearch}
-                  disabled={loading}
-                  className="px-3 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-gray-600 text-white rounded font-bold text-sm transition-colors"
-                >
-                  {loading ? <Loader size={14} className="animate-spin" /> : <Search size={14} />}
-                </button>
-              </div>
-
-              {/* Results */}
               {selectedPlaylist ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
                   <button
@@ -236,14 +199,12 @@ const StreamingSource: React.FC<StreamingSourceProps> = ({ onTracksImport, onClo
                           <div className="font-semibold text-white truncate text-sm">{playlist.name}</div>
                           <div className="text-gray-500 truncate text-xs">{playlist.description}</div>
                         </div>
-                        <Play size={16} className="flex-none text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
+                        <Play size={16} className="flex-none text-green-400 opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </>
-          )}
         </div>
       )}
 
