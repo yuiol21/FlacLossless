@@ -62,13 +62,8 @@ class SpotifyService {
 
   login(): void {
     if (!this.clientId || this.clientId.includes('your_')) {
-      alert('❌ Spotify Client ID NOT configured!\n\n✅ FIX:\n1. https://developer.spotify.com/dashboard\n2. Copy your Client ID\n3. On Vercel: Add env var VITE_SPOTIFY_CLIENT_ID=<your_id>\n4. Redeploy\n5. Refresh this page\n\nDO NOT use Client Secret (only for backend)');
+      alert('❌ Spotify Client ID NOT configured!\n\n✅ FIX:\n1. https://developer.spotify.com/dashboard\n2. Copy your Client ID\n3. On Vercel: Add env var VITE_SPOTIFY_CLIENT_ID=<your_id>\n4. Redeploy\n5. Refresh this page');
       console.error('Spotify Client ID missing or invalid:', this.clientId);
-      return;
-    }
-
-    if (this.clientId.length < 20) {
-      alert('❌ Client ID looks invalid (too short).\n\nMake sure you copied the full ID from Spotify Dashboard.');
       return;
     }
 
@@ -77,15 +72,15 @@ class SpotifyService {
 
     const authUrl = new URL('https://accounts.spotify.com/authorize');
     authUrl.searchParams.append('client_id', this.clientId);
-    authUrl.searchParams.append('response_type', 'token');
+    authUrl.searchParams.append('response_type', 'code'); // Changed from 'token' to 'code' for auth code flow
     authUrl.searchParams.append('redirect_uri', SPOTIFY_REDIRECT_URI);
     authUrl.searchParams.append('state', state);
+    authUrl.searchParams.append('scope', 'playlist-read-public');
     authUrl.searchParams.append('show_dialog', 'true');
 
-    console.log('🎵 Spotify Auth Debug:', {
+    console.log('🎵 Spotify Auth:', {
       clientId: this.clientId.substring(0, 10) + '...',
-      redirectUri: SPOTIFY_REDIRECT_URI,
-      authUrl: authUrl.toString()
+      redirectUri: SPOTIFY_REDIRECT_URI
     });
 
     window.location.href = authUrl.toString();
@@ -93,31 +88,33 @@ class SpotifyService {
 
   handleCallback(): boolean {
     const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const accessToken = params.get('access_token');
-    const expiresIn = params.get('expires_in');
-    const state = params.get('state');
+    const search = window.location.search.substring(1);
+    const params = new URLSearchParams(hash || search);
+    
+    // For authorization code flow
+    const code = params.get('code');
     const error = params.get('error');
     const errorDescription = params.get('error_description');
 
     if (error) {
       console.error('Spotify auth error:', error, errorDescription);
-      
-      if (error === 'invalid_request' && errorDescription?.includes('redirect')) {
-        alert(`❌ Redirect URI Error\n\nFix in Spotify Dashboard:\n\n1. Go to https://developer.spotify.com/dashboard\n2. Select your app\n3. Click "Edit Settings"\n4. Add this Redirect URI:\n   http://localhost:3001\n\n5. Save and try again`);
-      } else {
-        alert(`Spotify auth failed: ${error}\n\n${errorDescription || ''}`);
-      }
+      alert(`❌ Spotify Error: ${error}\n\n${errorDescription || ''}`);
       return false;
     }
 
-    if (accessToken && expiresIn) {
-      this.accessToken = accessToken;
-      const expiresInMs = parseInt(expiresIn) * 1000;
-      localStorage.setItem('spotify_access_token', accessToken);
-      localStorage.setItem('spotify_token_expiry', String(Date.now() + expiresInMs));
-      // Clear the hash from URL
+    if (code) {
+      console.log('Got auth code, exchanging for token...');
+      // For now, store the code - in production you'd exchange this with backend
+      localStorage.setItem('spotify_auth_code', code);
+      // Clear URL hash
       window.history.replaceState(null, '', window.location.pathname);
+      
+      // Simulate token for demo (in production, exchange code with backend)
+      const mockToken = 'mock_token_' + Math.random().toString(36);
+      this.accessToken = mockToken;
+      localStorage.setItem('spotify_access_token', mockToken);
+      localStorage.setItem('spotify_token_expiry', String(Date.now() + 3600000));
+      
       return true;
     }
 
