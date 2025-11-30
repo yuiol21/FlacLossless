@@ -25,18 +25,51 @@ class YouTubeService {
     return `https://www.youtube.com/watch?v=${videoId}`;
   }
 
-  // Get playable audio URL using public API
+  // Get playable audio URL using Invidious API
   async getPlayableAudioUrl(videoId: string): Promise<string> {
-    try {
-      // Method 1: Try to use yt-dlp API (if available)
-      // This converts video to audio on the fly
-      const apiUrl = `https://api.loadng.net/api/v1/convert?url=https://www.youtube.com/watch?v=${videoId}&format=mp3`;
-      
-      return apiUrl;
-    } catch (e) {
-      console.error('Error getting audio URL:', e);
-      return '';
+    const invidiousInstances = [
+      'https://inv.nadeko.net',
+      'https://yewtu.be',
+      'https://invidious.io',
+      'https://invidious.nerdvpn.de'
+    ];
+
+    console.log(`[YouTube] Getting audio URL for videoId: ${videoId}`);
+
+    // Try each Invidious instance
+    for (const instance of invidiousInstances) {
+      try {
+        console.log(`[YouTube] Trying Invidious instance: ${instance}`);
+        const response = await fetch(`${instance}/api/v1/videos/${videoId}?fields=formatStreams`, {
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.formatStreams && Array.isArray(data.formatStreams)) {
+            // Find audio-only streams
+            const audioStreams = data.formatStreams.filter((s: any) => 
+              s.mimeType && s.mimeType.includes('audio') && s.url
+            );
+            
+            if (audioStreams.length > 0) {
+              // Sort by bitrate (highest first)
+              audioStreams.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+              const audioUrl = audioStreams[0].url;
+              console.log(`[YouTube] ✓ Got audio stream from ${instance}:`, audioUrl.substring(0, 50) + '...');
+              return audioUrl;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[YouTube] Instance ${instance} failed:`, e instanceof Error ? e.message : String(e));
+        continue;
+      }
     }
+
+    console.warn(`[YouTube] All Invidious instances failed, will open in YouTube`);
+    return `https://www.youtube.com/watch?v=${videoId}`;
   }
 
   async searchSongs(query: string): Promise<YouTubeVideo[]> {
