@@ -30,6 +30,7 @@ interface SpotifyPlaylist {
 class SpotifyService {
   private accessToken: string | null = null;
   private clientId: string = SPOTIFY_CLIENT_ID;
+  private codeVerifier: string = '';
 
   constructor() {
     // Try to restore token on initialization
@@ -41,14 +42,32 @@ class SpotifyService {
     }
   }
 
+  // Generate PKCE code verifier and challenge
+  private generatePKCE() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    let verifier = '';
+    for (let i = 0; i < 128; i++) {
+      verifier += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    this.codeVerifier = verifier;
+    return verifier;
+  }
+
+  private async sha256(plain: string) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashString = hashArray.map(b => String.fromCharCode(b)).join('');
+    return btoa(hashString).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
   async authenticate(): Promise<boolean> {
     if (!this.clientId || this.clientId.includes('your_')) {
-      console.error('Spotify Client ID not configured in .env.local');
-      alert('⚠️ Spotify Client ID not configured.\n\n1. Go to https://developer.spotify.com/dashboard\n2. Create an app\n3. Copy the Client ID\n4. Add to .env.local: VITE_SPOTIFY_CLIENT_ID=your_client_id');
+      console.error('Spotify Client ID not configured');
       return false;
     }
 
-    // Check if we have a valid token
     const storedToken = localStorage.getItem('spotify_access_token');
     const tokenExpiry = localStorage.getItem('spotify_token_expiry');
 
@@ -60,38 +79,39 @@ class SpotifyService {
     return false;
   }
 
-  login(): void {
+  async login(): Promise<void> {
     if (!this.clientId || this.clientId.includes('your_')) {
       alert('❌ Spotify Client ID NOT configured!\n\n✅ FIX:\n1. https://developer.spotify.com/dashboard\n2. Copy your Client ID\n3. On Vercel: Add env var VITE_SPOTIFY_CLIENT_ID=<your_id>\n4. Redeploy\n5. Refresh this page');
-      console.error('Spotify Client ID missing or invalid:', this.clientId);
       return;
     }
 
     const state = Math.random().toString(36).substring(7);
+    const verifier = this.generatePKCE();
+    const challenge = await this.sha256(verifier);
+
     localStorage.setItem('spotify_auth_state', state);
+    localStorage.setItem('spotify_code_verifier', verifier);
 
     const authUrl = new URL('https://accounts.spotify.com/authorize');
     authUrl.searchParams.append('client_id', this.clientId);
     authUrl.searchParams.append('response_type', 'code');
     authUrl.searchParams.append('redirect_uri', SPOTIFY_REDIRECT_URI);
     authUrl.searchParams.append('state', state);
+    authUrl.searchParams.append('scope', 'playlist-read-public');
+    authUrl.searchParams.append('code_challenge_method', 'S256');
+    authUrl.searchParams.append('code_challenge', challenge);
     authUrl.searchParams.append('show_dialog', 'true');
 
-    console.log('🎵 Spotify Auth:', {
-      clientId: this.clientId.substring(0, 10) + '...',
-      redirectUri: SPOTIFY_REDIRECT_URI
-    });
-
+    console.log('🎵 Spotify Auth with PKCE:', SPOTIFY_REDIRECT_URI);
     window.location.href = authUrl.toString();
   }
 
-  handleCallback(): boolean {
-    const hash = window.location.hash.substring(1);
-    const search = window.location.search.substring(1);
-    const params = new URLSearchParams(hash || search);
+  async handleCallback(): Promise<boolean> {
+    const search = window.location.search;
+    const params = new URLSearchParams(search);
     
-    // For authorization code flow
     const code = params.get('code');
+    const state = params.get('state');
     const error = params.get('error');
     const errorDescription = params.get('error_description');
 
@@ -101,20 +121,56 @@ class SpotifyService {
       return false;
     }
 
-    if (code) {
-      console.log('Got auth code, exchanging for token...');
-      // For now, store the code - in production you'd exchange this with backend
-      localStorage.setItem('spotify_auth_code', code);
-      // Clear URL hash
-      window.history.replaceState(null, '', window.location.pathname);
-      
-      // Simulate token for demo (in production, exchange code with backend)
-      const mockToken = 'mock_token_' + Math.random().toString(36);
-      this.accessToken = mockToken;
-      localStorage.setItem('spotify_access_token', mockToken);
-      localStorage.setItem('spotify_token_expiry', String(Date.now() + 3600000));
-      
-      return true;
+    if (code && state) {
+      try {
+        const storedState = localStorage.getItem('spotify_auth_state');
+        if (storedState !== state) {
+          alert('State mismatch - possible CSRF attack');
+          return false;
+        }
+
+        const verifier = localStorage.getItem('spotify_code_verifier');
+        if (!verifier) {
+          alert('Missing code verifier');
+          return false;
+        }
+
+        // Exchange code for token using PKCE
+        const response = await fetch('https://accounts.spotify.com/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: this.clientId,
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: SPOTIFY_REDIRECT_URI,
+            code_verifier: verifier
+          }).toString()
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          console.error('Token exchange error:', error);
+          alert(`Failed to get token: ${error.error_description || error.error}`);
+          return false;
+        }
+
+        const data = await response.json();
+        this.accessToken = data.access_token;
+        
+        localStorage.setItem('spotify_access_token', data.access_token);
+        localStorage.setItem('spotify_token_expiry', String(Date.now() + (data.expires_in * 1000)));
+        localStorage.removeItem('spotify_code_verifier');
+        localStorage.removeItem('spotify_auth_state');
+
+        // Clear URL
+        window.history.replaceState(null, '', window.location.pathname);
+        return true;
+      } catch (e) {
+        console.error('Token exchange failed:', e);
+        alert(`Error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        return false;
+      }
     }
 
     return false;
