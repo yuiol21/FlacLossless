@@ -62,7 +62,13 @@ class SpotifyService {
 
   login(): void {
     if (!this.clientId || this.clientId.includes('your_')) {
-      alert('⚠️ Spotify Client ID not configured.\n\nSteps:\n1. Visit https://developer.spotify.com/dashboard\n2. Log in or create account\n3. Create an Application\n4. Copy your Client ID\n5. Open .env.local and paste it:\n   VITE_SPOTIFY_CLIENT_ID=your_client_id_here\n6. Refresh the page');
+      alert('❌ Spotify Client ID NOT configured!\n\n✅ FIX:\n1. https://developer.spotify.com/dashboard\n2. Copy your Client ID\n3. On Vercel: Add env var VITE_SPOTIFY_CLIENT_ID=<your_id>\n4. Redeploy\n5. Refresh this page\n\nDO NOT use Client Secret (only for backend)');
+      console.error('Spotify Client ID missing or invalid:', this.clientId);
+      return;
+    }
+
+    if (this.clientId.length < 20) {
+      alert('❌ Client ID looks invalid (too short).\n\nMake sure you copied the full ID from Spotify Dashboard.');
       return;
     }
 
@@ -74,8 +80,14 @@ class SpotifyService {
     authUrl.searchParams.append('response_type', 'token');
     authUrl.searchParams.append('redirect_uri', SPOTIFY_REDIRECT_URI);
     authUrl.searchParams.append('state', state);
+    authUrl.searchParams.append('show_dialog', 'true');
 
-    console.log('Redirecting to Spotify with URI:', SPOTIFY_REDIRECT_URI);
+    console.log('🎵 Spotify Auth Debug:', {
+      clientId: this.clientId.substring(0, 10) + '...',
+      redirectUri: SPOTIFY_REDIRECT_URI,
+      authUrl: authUrl.toString()
+    });
+
     window.location.href = authUrl.toString();
   }
 
