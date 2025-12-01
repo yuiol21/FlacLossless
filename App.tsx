@@ -3,12 +3,12 @@ import { audioGraph } from './services/audioGraph';
 import { DEMO_TRACK_URL, PRESETS } from './constants';
 import { generateEQPreset } from './services/geminiService';
 import { liveService } from './services/liveService';
-import { youtubeService } from './services/youtubeService';
 import Visualizer from './components/Visualizer';
 import Equalizer from './components/Equalizer';
 import PlayerControls from './components/PlayerControls';
 import Playlist from './components/Playlist';
 import StreamingSource from './components/StreamingSource';
+import YouTubePlayer from './components/YouTubePlayer';
 import { Track } from './types';
 import { X, Mic2, Disc, Sliders, Sparkles, Activity, Download, Zap, Key, List, Music, Wifi } from 'lucide-react';
 
@@ -28,6 +28,10 @@ const App: React.FC = () => {
   const [playlist, setPlaylist] = useState<Track[]>([]);
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [showStreamingSource, setShowStreamingSource] = useState(false);
+  
+  // YouTube Player State
+  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
+  const [youtubeVideoTitle, setYoutubeVideoTitle] = useState<string>('');
   
   // Audio FX State
   const [eqGains, setEqGains] = useState<number[]>(PRESETS.flat.gains);
@@ -189,66 +193,37 @@ const App: React.FC = () => {
   };
 
   const handlePlaylistTrackSelect = async (track: Track) => {
-    // YouTube videos - play via audio extraction
+    // YouTube videos - play in embedded player
     if (track.id.startsWith('youtube-')) {
       const videoId = track.url.match(/v=([^&]+)/)?.[1];
       console.log('[Play] YouTube track selected:', videoId);
       
       if (videoId) {
-        setCurrentTrack(track);
-        setShowPlaylist(true); // Auto-show playlist
-        
+        // Pause any currently playing audio
         if (audioRef.current) {
-          try {
-            // Get audio stream URL
-            console.log('[Play] Requesting audio URL...');
-            const audioUrl = await youtubeService.getPlayableAudioUrl(videoId);
-            
-            console.log('[Play] Got audio URL:', audioUrl?.substring(0, 80));
-            
-            // Check if we got a direct audio stream (not YouTube URL)
-            const isDirectStream = audioUrl && 
-                                   !audioUrl.includes('youtube.com') && 
-                                   !audioUrl.includes('youtu.be') &&
-                                   audioUrl.length > 100;
-            
-            if (isDirectStream) {
-              console.log('[Play] ✓ Direct audio stream detected, playing...');
-              // Direct audio stream
-              audioRef.current.src = audioUrl;
-              audioRef.current.crossOrigin = 'anonymous';
-              audioRef.current.load();
-              
-              // Wait for canplay event before playing
-              const playPromise = audioRef.current.play();
-              if (playPromise !== undefined) {
-                await playPromise.catch(e => {
-                  console.error('[Play] Playback error:', e);
-                  console.log('[Play] Falling back to YouTube...');
-                  window.open(track.url, '_blank');
-                });
-              }
-              setIsPlaying(true);
-            } else {
-              // Failed to extract - fallback to YouTube
-              console.warn('[Play] Could not extract audio stream, opening YouTube');
-              setIsPlaying(true);
-              window.open(track.url, '_blank');
-            }
-          } catch (e) {
-            console.error('[Play] Error:', e);
-            setIsPlaying(true);
-            window.open(track.url, '_blank');
-          }
+          audioRef.current.pause();
+          audioRef.current.src = '';
         }
+        setIsPlaying(false);
+        setBeatEnergy(0);
+        
+        setCurrentTrack(track);
+        setYoutubeVideoId(videoId);
+        setYoutubeVideoTitle(track.title);
       }
       return;
+    }
+
+    // Close YouTube player if open (switching to non-YouTube track)
+    if (youtubeVideoId) {
+      setYoutubeVideoId(null);
+      setYoutubeVideoTitle('');
     }
 
     // Spotify preview URLs play in app
     if (track.id.startsWith('spotify-') && track.url && track.url.includes('d.scdn.co')) {
       setCurrentTrack(track);
-      setShowPlaylist(true); // Auto-show playlist
+      setShowPlaylist(true);
       if (audioRef.current) {
         audioRef.current.src = track.url;
         audioRef.current.crossOrigin = 'anonymous';
@@ -276,7 +251,7 @@ const App: React.FC = () => {
     }
     
     setCurrentTrack(track);
-    setShowPlaylist(true); // Auto-show playlist
+    setShowPlaylist(true);
     if (audioRef.current) {
       audioRef.current.src = track.url;
       audioRef.current.load();
@@ -684,6 +659,18 @@ const App: React.FC = () => {
                 </div>
             </div>
         </div>
+      )}
+
+      {/* YouTube Embedded Player */}
+      {youtubeVideoId && (
+        <YouTubePlayer
+          videoId={youtubeVideoId}
+          title={youtubeVideoTitle}
+          onClose={() => {
+            setYoutubeVideoId(null);
+            setYoutubeVideoTitle('');
+          }}
+        />
       )}
     </div>
   );
