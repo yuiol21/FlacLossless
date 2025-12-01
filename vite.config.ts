@@ -9,13 +9,50 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 5000,
         host: '0.0.0.0',
-        strictPort: true,
-
-        // 🔥 Add this:
-        allowedHosts: [
-          'bc329d2b-04ee-4904-84f1-c35f19ba3310-00-38khtap9kgxmu.pike.replit.dev'
-        ]
-        // If you want to allow ALL hosts, replace the array with: allowedHosts: true
+        strictPort: false, // Fall back to next available port if 5000 is busy
+        allowedHosts: true,
+        
+        // Proxy backend requests to port 5001 using middlew proxy with proper headers
+        proxy: {
+          '/api': {
+            target: 'http://127.0.0.1:5001',
+            changeOrigin: false,
+            rewrite: (path) => path.replace(/^\/api/, ''),
+            ws: true,
+            configure: (proxy, options) => {
+              proxy.on('proxyRes', (proxyRes, req, res) => {
+                proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+                proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+                proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept';
+              });
+            }
+          },
+          '/download': {
+            target: 'http://127.0.0.1:5001',
+            changeOrigin: false,
+            configure: (proxy, options) => {
+              proxy.on('proxyRes', (proxyRes) => {
+                proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+              });
+            }
+          },
+          '/stream': {
+            target: 'http://127.0.0.1:5001',
+            changeOrigin: false,
+          },
+          '/metadata': {
+            target: 'http://127.0.0.1:5001',
+            changeOrigin: false,
+          },
+          '/cache': {
+            target: 'http://127.0.0.1:5001',
+            changeOrigin: false,
+          },
+          '/health': {
+            target: 'http://127.0.0.1:5001',
+            changeOrigin: false,
+          }
+        }
       },
 
       plugins: [react()],

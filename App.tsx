@@ -3,6 +3,7 @@ import { audioGraph } from './services/audioGraph';
 import { DEMO_TRACK_URL, PRESETS } from './constants';
 import { generateEQPreset } from './services/geminiService';
 import { liveService } from './services/liveService';
+import { backendService } from './services/backendService';
 import Visualizer from './components/Visualizer';
 import Equalizer from './components/Equalizer';
 import PlayerControls from './components/PlayerControls';
@@ -193,23 +194,44 @@ const App: React.FC = () => {
   };
 
   const handlePlaylistTrackSelect = async (track: Track) => {
-    // YouTube videos - play in embedded player
+    // YouTube videos - download via backend and play as MP3
     if (track.id.startsWith('youtube-')) {
-      const videoId = track.url.match(/v=([^&]+)/)?.[1];
-      console.log('[Play] YouTube track selected:', videoId);
+      console.log('[Play] YouTube track selected:', track.title);
       
-      if (videoId) {
-        // Pause any currently playing audio
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.src = '';
-        }
-        setIsPlaying(false);
-        setBeatEnergy(0);
-        
+      try {
         setCurrentTrack(track);
-        setYoutubeVideoId(videoId);
-        setYoutubeVideoTitle(track.title);
+        
+        // Download/get stream from backend
+        const result = await backendService.downloadAudio(track.url);
+        console.log('[Play] Got stream URL from backend:', result.streamUrl.substring(0, 60));
+        
+        // Update track with stream URL
+        const updatedTrack: Track = {
+          ...track,
+          url: result.streamUrl
+        };
+        setCurrentTrack(updatedTrack);
+        
+        // Close YouTube embed player
+        setYoutubeVideoId(null);
+        setYoutubeVideoTitle('');
+        
+        // Play the audio stream
+        if (audioRef.current) {
+          audioRef.current.src = result.streamUrl;
+          audioRef.current.crossOrigin = 'anonymous';
+          audioRef.current.load();
+          audioRef.current.play();
+          setIsPlaying(true);
+        }
+      } catch (error) {
+        console.error('[Play] Failed to get YouTube audio:', error);
+        // Fallback to embedded player on error
+        const videoId = track.url.match(/v=([^&]+)/)?.[1];
+        if (videoId) {
+          setYoutubeVideoId(videoId);
+          setYoutubeVideoTitle(track.title);
+        }
       }
       return;
     }

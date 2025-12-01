@@ -1,4 +1,6 @@
 // YouTube Integration Service - Search for songs and convert to audio
+import { backendService } from './backendService';
+
 const YOUTUBE_API_KEY = (import.meta as any).env.VITE_YOUTUBE_API_KEY || '';
 
 interface YouTubeVideo {
@@ -18,91 +20,44 @@ interface YouTubePlaylist {
 }
 
 class YouTubeService {
-  // Convert YouTube URL to audio stream via API
+  // Convert YouTube URL to audio stream via BACKEND (not direct API)
   private getAudioStreamUrl(videoId: string): string {
-    // Using noCookie embed and yt-dlp proxy services
-    // Option 1: Direct MP3 conversion via API
+    // Using backend service instead of proxy APIs
     return `https://www.youtube.com/watch?v=${videoId}`;
   }
 
-  // Get playable audio URL using HLS streaming or direct extraction
+  // Get playable audio URL using backend yt-dlp server
   async getPlayableAudioUrl(videoId: string): Promise<string> {
-    // Use multiple audio extraction services that work reliably
-    const audioServices = [
-      // Service 1: Using youtube-mp3 style API
-      {
-        name: 'yt-audio-proxy',
-        url: `https://www.yt-download.org/api/button/mp3/${videoId}`
-      },
-      // Service 2: Direct extraction via API
-      {
-        name: 'simple-api',
-        url: `https://api.mservices.net/youtube/mp3?url=https://www.youtube.com/watch?v=${videoId}`
-      },
-      // Service 3: Using another proxy
-      {
-        name: 'ytproxy',
-        url: `https://youtubepp.com/download?v=${videoId}`
-      }
-    ];
-
-    console.log(`[YouTube] Attempting to get audio URL for: ${videoId}`);
-
-    // Try each service
-    for (const service of audioServices) {
-      try {
-        console.log(`[YouTube] Trying service: ${service.name}`);
-        
-        const response = await fetch(service.url, {
-          signal: AbortSignal.timeout(8000),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Different services return different formats
-          let audioUrl = '';
-          
-          if (data.link) audioUrl = data.link; // yt-download format
-          else if (data.url) audioUrl = data.url; // simple-api format
-          else if (data.mp3) audioUrl = data.mp3; // alternative format
-          else if (data.data?.url) audioUrl = data.data.url; // nested format
-          
-          if (audioUrl && audioUrl.length > 50) { // Basic validation
-            console.log(`[YouTube] ✓ Got audio from ${service.name}:`, audioUrl.substring(0, 60) + '...');
-            return audioUrl;
-          }
-        }
-      } catch (e) {
-        console.warn(`[YouTube] ${service.name} failed:`, e instanceof Error ? e.message : String(e));
-      }
-    }
-
-    // Last resort: Try direct HLS conversion
     try {
-      console.log(`[YouTube] Trying HLS stream conversion...`);
-      const hlsUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      // Return a proxy that can serve audio
-      const proxyUrl = `https://yt-stream.herokuapp.com/api/audio/${videoId}`;
-      
-      const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(5000) });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.url) {
-          console.log(`[YouTube] ✓ Got HLS stream`);
-          return data.url;
-        }
+      // First, try to get from cache (no re-download)
+      try {
+        console.log(`[YouTube] Checking backend cache for: ${videoId}`);
+        const cached = await backendService.getMetadata(videoId);
+        console.log(`[YouTube] ✓ Cache hit: ${videoId}`);
+        return cached.streamUrl;
+      } catch (e) {
+        // Not in cache, proceed to download
       }
-    } catch (e) {
-      console.warn(`[YouTube] HLS conversion failed`, e);
-    }
 
-    console.warn(`[YouTube] All audio extraction services failed`);
-    return `https://www.youtube.com/watch?v=${videoId}`; // Fallback
+      // Download via backend
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      console.log(`[YouTube] Downloading via backend: ${youtubeUrl}`);
+
+      const result = await backendService.downloadAudio(youtubeUrl);
+      
+      console.log(`[YouTube] ✓ Got audio from backend:`, {
+        title: result.metadata.title,
+        cached: result.cached,
+        streamUrl: result.streamUrl.substring(0, 60)
+      });
+
+      return result.streamUrl;
+    } catch (e) {
+      console.error('[YouTube] Backend audio extraction failed:', e);
+      throw e;
+    }
   }
+
 
   async searchSongs(query: string): Promise<YouTubeVideo[]> {
     if (!YOUTUBE_API_KEY || YOUTUBE_API_KEY.includes('your_')) {
