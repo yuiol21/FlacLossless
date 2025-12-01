@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { audioGraph } from './services/audioGraph';
 import { DEMO_TRACK_URL, PRESETS } from './constants';
 import { generateEQPreset } from './services/geminiService';
-import { liveService } from './services/liveService'; // Import Live Service
+import { liveService } from './services/liveService';
+import { youtubeService } from './services/youtubeService';
 import Visualizer from './components/Visualizer';
 import Equalizer from './components/Equalizer';
 import PlayerControls from './components/PlayerControls';
